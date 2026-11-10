@@ -1,0 +1,47 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'index.html'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Copy web page into app bundle
+        run: cp index.html ios/ConvexLens/index.html
+
+      - name: Build archive (unsigned, for AltStore)
+        run: |
+          xcodebuild -project ios/ConvexLens.xcodeproj -scheme ConvexLens -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= clean archive -archivePath build/ConvexLens.xcarchive
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ConvexLens.xcarchive/Products/Applications/ConvexLens.app Payload/
+          zip -r convex-lens.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: convex-lens-ipa
+          path: convex-lens.ipa
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "ios-1.0.${{ github.run_number }}" convex-lens.ipa \
+            --title "凸透镜成像 iOS v1.0 (build ${{ github.run_number }})" \
+            --notes "iOS 安装包（未签名，供 AltStore 安装）。在 iPhone 上用 AltStore 打开此文件安装，需配合电脑上的 AltServer，每 7 天续签一次。"
